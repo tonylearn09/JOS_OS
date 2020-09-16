@@ -192,6 +192,7 @@ cga_putc(int c)
 	}
 
 	// What is the purpose of this?
+    // This scroll the screen up (by cleaning the first row
 	if (crt_pos >= CRT_SIZE) {
 		int i;
 
