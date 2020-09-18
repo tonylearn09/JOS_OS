@@ -25,6 +25,11 @@ pgfault(struct UTrapframe *utf)
 	//   (see <inc/memlayout.h>).
 
 	// LAB 4: Your code here.
+    // (1) checks that the fault is a write (check for FEC_WR in the error code)
+    // (2) PTE_COW in uvpt
+    if (!((err & FEC_WR) && (uvpd[PDX(addr)] & PTE_P)
+			&& (uvpt[PGNUM(addr)] & PTE_COW) && (uvpt[PGNUM(addr)] & PTE_P)))
+		panic("page cow check failed");
 
 	// Allocate a new page, map it at a temporary location (PFTEMP),
 	// copy the data from the old page to the new page, then move the new
@@ -33,8 +38,20 @@ pgfault(struct UTrapframe *utf)
 	//   You should make three system calls.
 
 	// LAB 4: Your code here.
+    addr = ROUNDDOWN(addr, PGSIZE);
 
-	panic("pgfault not implemented");
+    if ((r = sys_page_alloc(0, (void *)PFTEMP, PTE_P | PTE_U | PTE_W)) < 0)
+		panic("sys_page_alloc: %e", r);
+
+	memmove(PFTEMP, addr, PGSIZE);
+
+    if ((r = sys_page_map(0, (void *)PFTEMP, 0, addr, PTE_P | PTE_U | PTE_W)) < 0)
+		panic("sys_page_map: %e", r);
+
+	if ((r = sys_page_unmap(0, (void *)PFTEMP)) < 0)
+		panic("sys_page_unmap: %e", r);
+
+	//panic("pgfault not implemented");
 }
 
 //
@@ -54,7 +71,28 @@ duppage(envid_t envid, unsigned pn)
 	int r;
 
 	// LAB 4: Your code here.
-	panic("duppage not implemented");
+	//panic("duppage not implemented");
+    void *addr = (void *)(pn * PGSIZE);
+    if (uvpt[pn] & PTE_SHARE) {
+		//cprintf("dup share page :%d\n", pn);
+		if ((r = sys_page_map(0, addr, envid, addr, PTE_SYSCALL)) < 0)
+			panic("duppage sys_page_map:%e", r);
+    } else if (uvpt[pn] & (PTE_W | PTE_COW)) {
+        // Map the child first, then the parent 
+        // parent need to remapped again even if originally COW
+        // Check the explantion in https://blog.finaltheory.me/note/MIT6.828-Notes.html
+        // In brief, the parent process might be running concurrently, and may be 
+        // modifying the page we map (making it COW -> W), thus change the permission.
+		if ((r = sys_page_map(0, addr, envid, addr, PTE_COW | PTE_U | PTE_P)) < 0)
+			panic("sys_page_map COW:%e", r);
+
+        // env_id 0 is the curenv
+		if ((r = sys_page_map(0, addr, 0, addr, PTE_COW | PTE_U | PTE_P)) < 0)
+			panic("sys_page_map COW:%e", r);
+	} else {
+		if ((r = sys_page_map(0, addr, envid, addr, PTE_U | PTE_P)) < 0)
+			panic("sys_page_map UP:%e", r);
+	}
 	return 0;
 }
 
@@ -78,7 +116,56 @@ envid_t
 fork(void)
 {
 	// LAB 4: Your code here.
-	panic("fork not implemented");
+	//panic("fork not implemented");
+    set_pgfault_handler(pgfault);
+
+	envid_t envid = sys_exofork();
+	uint8_t *addr;
+	if (envid < 0)
+		panic("sys_exofork:%e", envid);
+	if (envid == 0) {
+        // We're the child.
+        // The copied value of the global variable 'thisenv'
+        // is no longer valid (it refers to the parent!).
+        // Fix it and return 0
+		thisenv = &envs[ENVX(sys_getenvid())];
+		return 0;
+	}
+
+    // We are the parent
+
+    // https://pdos.csail.mit.edu/6.828/2014/lec/l-usevm.md
+    // To get pte for virtual page n, compute pte_t uvpt[n] 
+    // = uvpt + n * 4 (pde_t is a word)
+    // = (0x3BD<<22) | (top 10 bits of n) | (bottom 10 bits of n) << 2
+    for (addr = (uint8_t *)0; addr < (uint8_t *)USTACKTOP - PGSIZE; addr += PGSIZE) {
+		if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P)
+				&& (uvpt[PGNUM(addr)] & PTE_U)) {
+			duppage(envid, PGNUM(addr));
+		}
+	}
+
+    // Map till USTACKTOP
+	duppage(envid, PGNUM(ROUNDDOWN(&addr, PGSIZE)));
+
+    // allocate a new page for the child's user exception stack.
+    // Since the page fault handler will be doing the actual copying and 
+    // the page fault handler runs on the exception stack, 
+    // the exception stack cannot be made copy-on-write
+    int r;
+    if ((r = sys_page_alloc(envid, (void *)(UXSTACKTOP - PGSIZE), PTE_U | PTE_W | PTE_P)) < 0) 
+        panic("sys_page_alloc: %e", r);
+
+    // The parent sets the user page fault entrypoint for the child to look like its own
+    extern void _pgfault_upcall();
+	sys_env_set_pgfault_upcall(envid, _pgfault_upcall);
+
+    // The child is now ready to run, so the parent marks it runnable
+	if ((r = sys_env_set_status(envid, ENV_RUNNABLE)))
+		panic("sys_env_set_status:%e", r);
+
+	return envid;
+
 }
 
 // Challenge!
