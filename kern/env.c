@@ -397,6 +397,9 @@ env_create(uint8_t *binary, enum EnvType type)
 	// LAB 5: Your code here.
     struct Env *e;
 	env_alloc(&e, 0);
+    if (type == ENV_TYPE_FS) {
+		e->env_tf.tf_eflags |= FL_IOPL_MASK;
+    }
 	e->env_type = type;
 	load_icode(e, binary);
 }
@@ -465,7 +468,7 @@ env_destroy(struct Env *e)
 	// If e is currently running on other CPUs, we change its state to
 	// ENV_DYING. A zombie environment will be freed the next time
 	// it traps to the kernel.
-    cprintf("in env_destroy curenv:%x, cpunum:%d, e:%x, ecpunum:%d\n", curenv->env_id, thiscpu->cpu_id, e->env_id, e->env_cpunum);
+    //cprintf("in env_destroy curenv:%x, cpunum:%d, e:%x, ecpunum:%d\n", curenv->env_id, thiscpu->cpu_id, e->env_id, e->env_cpunum);
 	if (e->env_status == ENV_RUNNING && curenv != e) {
         cprintf("set e:%x to dying\n", e->env_id);
 		e->env_status = ENV_DYING;

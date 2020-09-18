@@ -73,7 +73,11 @@ duppage(envid_t envid, unsigned pn)
 	// LAB 4: Your code here.
 	//panic("duppage not implemented");
     void *addr = (void *)(pn * PGSIZE);
-	if (uvpt[pn] & (PTE_W | PTE_COW)) {
+    if (uvpt[pn] & PTE_SHARE) {
+		//cprintf("dup share page :%d\n", pn);
+		if ((r = sys_page_map(0, addr, envid, addr, PTE_SYSCALL)) < 0)
+			panic("duppage sys_page_map:%e", r);
+    } else if (uvpt[pn] & (PTE_W | PTE_COW)) {
         // Map the child first, then the parent 
         // parent need to remapped again even if originally COW
         // Check the explantion in https://blog.finaltheory.me/note/MIT6.828-Notes.html
