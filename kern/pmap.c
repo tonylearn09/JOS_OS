@@ -211,7 +211,7 @@ mem_init(void)
 	//       overwrite memory.  Known as a "guard page".
 	//     Permissions: kernel RW, user NONE
 	// Your code goes here:
-    cprintf("bootstack map va:%x, pa:%x\n", KSTACKTOP-KSTKSIZE, PADDR(bootstack));
+    //cprintf("bootstack map va:%x, pa:%x\n", KSTACKTOP-KSTKSIZE, PADDR(bootstack));
 	boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W);
 
 	//////////////////////////////////////////////////////////////////////
@@ -275,7 +275,11 @@ mem_init_mp(void)
 	//     Permissions: kernel RW, user NONE
 	//
 	// LAB 4: Your code here:
-
+    int i;
+	for (i = 0; i < NCPU; i++) {
+		int kstacktop_i = KSTACKTOP - i * (KSTKSIZE + KSTKGAP) - KSTKSIZE;
+		boot_map_region(kern_pgdir, kstacktop_i, KSTKSIZE, PADDR(percpu_kstacks[i]), PTE_W);
+	}
 }
 
 // --------------------------------------------------------------
@@ -319,7 +323,9 @@ page_init(void)
 
     // Memory 0 ~ 640KB can be used (except for the first page)
 	size_t i;
+    size_t mp_page = PGNUM(MPENTRY_PADDR);
 	for (i = 1; i < npages_basemem; i++) {
+        if (i == mp_page) continue;
 		pages[i].pp_ref = 0;
         pages[i].pp_link = NULL;
 		tail->pp_link = &pages[i];
@@ -615,7 +621,16 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+	//panic("mmio_map_region not implemented");
+    size_t begin = ROUNDDOWN(pa, PGSIZE), end = ROUNDUP(pa + size, PGSIZE);
+	size_t map_size = end - begin;
+	if (base + map_size >= MMIOLIM) {
+		panic("Overflow MMIOLIM");
+	}
+	boot_map_region(kern_pgdir, base, map_size, pa, PTE_PCD|PTE_PWT|PTE_W);
+	uintptr_t result = base;
+	base += map_size;
+	return (void *)result;
 }
 
 static uintptr_t user_mem_check_addr;
@@ -646,7 +661,7 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 	int check_perm = (perm | PTE_P);
 	uint32_t check_va = (uint32_t)va;
 
-	cprintf("check va:%x, len:%x, begin:%x, end:%x\n", va, len, begin, end);
+	//cprintf("check va:%x, len:%x, begin:%x, end:%x\n", va, len, begin, end);
 
 	for (; begin < end; begin += PGSIZE) {
 		pte_t *pte = pgdir_walk(env->env_pgdir, (void *)begin, 0);

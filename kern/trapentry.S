@@ -47,6 +47,7 @@
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
+// Predefined exception/interrupt
 TRAPHANDLER_NOEC(handler0, T_DIVIDE)
 TRAPHANDLER_NOEC(handler1, T_DEBUG)
 TRAPHANDLER_NOEC(handler2, T_NMI)
@@ -65,7 +66,17 @@ TRAPHANDLER_NOEC(handler16, T_FPERR)
 TRAPHANDLER(handler17, T_ALIGN)
 TRAPHANDLER_NOEC(handler18, T_MCHK)
 TRAPHANDLER_NOEC(handler19, T_SIMDERR)
+
+// System Call
 TRAPHANDLER_NOEC(handler48, T_SYSCALL)
+
+// Interrupt
+TRAPHANDLER_NOEC(handler32, IRQ_OFFSET + IRQ_TIMER)
+TRAPHANDLER_NOEC(handler33, IRQ_OFFSET + IRQ_KBD)
+TRAPHANDLER_NOEC(handler36, IRQ_OFFSET + IRQ_SERIAL)
+TRAPHANDLER_NOEC(handler39, IRQ_OFFSET + IRQ_SPURIOUS)
+TRAPHANDLER_NOEC(handler46, IRQ_OFFSET + IRQ_IDE)
+TRAPHANDLER_NOEC(handler51, IRQ_OFFSET + IRQ_ERROR)
 
 
 

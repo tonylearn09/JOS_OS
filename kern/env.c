@@ -191,8 +191,8 @@ env_setup_vm(struct Env *e)
 	// LAB 3: Your code here.
     p->pp_ref++;
 	e->env_pgdir = (pde_t *)page2kva(p);
-	cprintf("env:%d pgno:%d env_pgdir_addr:%x,val:%x kern_pgdir_addr:%x,val:%x\n",
-		e->env_id, p-pages, &e->env_pgdir, e->env_pgdir, &kern_pgdir, kern_pgdir);
+	//cprintf("env:%d pgno:%d env_pgdir_addr:%x,val:%x kern_pgdir_addr:%x,val:%x\n",
+		//e->env_id, p-pages, &e->env_pgdir, e->env_pgdir, &kern_pgdir, kern_pgdir);
 	memcpy(e->env_pgdir, kern_pgdir, PGSIZE);
 
 	// UVPT maps the env's own page table read-only.
@@ -259,6 +259,7 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 
 	// Enable interrupts while in user mode.
 	// LAB 4: Your code here.
+    e->env_tf.tf_eflags |= FL_IF;
 
 	// Clear the page fault handler until user installs one.
 	e->env_pgfault_upcall = 0;
@@ -463,7 +464,9 @@ env_destroy(struct Env *e)
 	// If e is currently running on other CPUs, we change its state to
 	// ENV_DYING. A zombie environment will be freed the next time
 	// it traps to the kernel.
+    cprintf("in env_destroy curenv:%x, cpunum:%d, e:%x, ecpunum:%d\n", curenv->env_id, thiscpu->cpu_id, e->env_id, e->env_cpunum);
 	if (e->env_status == ENV_RUNNING && curenv != e) {
+        cprintf("set e:%x to dying\n", e->env_id);
 		e->env_status = ENV_DYING;
 		return;
 	}
@@ -536,6 +539,7 @@ env_run(struct Env *e)
 	curenv->env_status = ENV_RUNNING;
 	curenv->env_runs++;
 	lcr3(PADDR(curenv->env_pgdir));
+    unlock_kernel();
 	env_pop_tf(&curenv->env_tf);
 }
 
